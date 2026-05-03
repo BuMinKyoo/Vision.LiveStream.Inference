@@ -33,20 +33,16 @@ RTSP 스트림을 받아 실시간으로 추론하고 화면에 박스를 그리
 ```
 Vision.LiveStream.Inference/                 <-- 저장소 루트
 ├── README.md
-├── Tester/                                  <-- 가상 CCTV 환경 (서버 + 송출기 + 샘플 영상)
-│   ├── cameraTest/
-│   │   ├── Video1.mp4 / Video2.mp4 / Video3.mp4   샘플 CCTV 영상
-│   │   ├── ffmpeg.exe                              스트림 송출기
-│   │   ├── run_cameras_tcp.bat                     TCP 모드 다중 카메라 실행
-│   │   └── run_cameras_udp.bat                     UDP 모드 다중 카메라 실행
-│   └── mediamtx_v1.18.1_windows_amd64/
-│       ├── mediamtx.exe                            RTSP 서버 (분배기)
-│       └── mediamtx.yml                            서버 설정
+├── Tester/                                  <-- 가상 CCTV 환경
+│   └── cameraTest/
+│       ├── Video1.mp4 / Video2.mp4         샘플 CCTV 영상 (저장소 포함)
+│       ├── (Video3.mp4)                    100MB 초과로 직접 추가 — gitignore
+│       ├── (ffmpeg.exe)                    별도 다운로드 필요 — gitignore
+│       ├── run_cameras_tcp.bat             TCP 모드 다중 카메라 실행
+│       └── run_cameras_udp.bat             UDP 모드 다중 카메라 실행
 └── Vision.LiveStream.Inference/             <-- 솔루션 + WPF 프로젝트
     └── Vision.LiveStream.Inference/
-        ├── Assets/
-        │   ├── Models/yolov8n.onnx
-        │   └── TestImages/*.jpg
+        ├── Assets/Models/yolov8n.onnx
         ├── Common/   (RelayCommand, AsyncRelayCommand, BaseViewModel)
         ├── Models/   (Detection)
         ├── Services/ (CocoLabels, ImagePreprocessor, YoloV8Detector)
@@ -54,7 +50,9 @@ Vision.LiveStream.Inference/                 <-- 저장소 루트
         └── MainWindow.xaml(.cs)
 ```
 
-> `Tester/` 폴더의 `mediamtx.exe`, `ffmpeg.exe`, 샘플 mp4 는 학습 편의를 위해 저장소에 함께 포함.
+> 저장소에 포함된 것: 샘플 영상 2개(`Video1.mp4`, `Video2.mp4`), 배치 파일, ONNX 모델.
+> 직접 받아야 하는 것: `mediamtx.exe`, `ffmpeg.exe`, (선택) `Video3.mp4`.
+> 모두 아래 §3 절차대로 받아서 `Tester/` 하위에 배치하면 됨.
 
 ---
 
@@ -62,23 +60,23 @@ Vision.LiveStream.Inference/                 <-- 저장소 루트
 
 > 아래 절차는 PC 한 대 안에서 **RTSP 서버 → 송출기 → 클라이언트** 구조를 그대로 재현하는 흐름.
 
-### Step 1. MediaMTX (RTSP 서버) 실행
+### Step 1. MediaMTX (RTSP 서버) 다운로드 + 실행
 
 PC 를 RTSP 분배기로 만들어 주는 서버.
 
 - 다운로드: <https://github.com/bluenviron/mediamtx/releases> 에서 `mediamtx_vX.X.X_windows_amd64.zip`
-- 본 저장소에는 `Tester/mediamtx_v1.18.1_windows_amd64/` 에 이미 포함됨
+- 압축을 풀어 `Tester/mediamtx_v.../` 형태로 저장소 안에 두면 편함 (gitignore 처리됨)
 - 실행: `mediamtx.exe` 더블클릭
 - 성공 로그: `[RTSP] listener opened on :8554`
 - ⚠ 이 콘솔 창은 **끄지 말고 켜둘 것** (서버가 죽음)
 
-### Step 2. FFmpeg (송출기) 준비
+### Step 2. FFmpeg (송출기) 다운로드
 
 mp4 파일을 디먹싱 → RTSP 패킷으로 다시 먹싱해서 서버로 쏴주는 도구.
 
 - 다운로드: <https://www.gyan.dev/ffmpeg/builds/> → `ffmpeg-master-latest-win64-gpl.zip`
-- 압축의 `bin/ffmpeg.exe` 만 꺼내서 사용
-- 본 저장소에는 `Tester/cameraTest/ffmpeg.exe` 로 이미 포함됨
+- 압축의 `bin/ffmpeg.exe` 만 꺼내서 `Tester/cameraTest/ffmpeg.exe` 위치에 둘 것
+  (배치 파일들이 같은 폴더에 있는 `ffmpeg` 를 호출함)
 
 ### Step 3. 단일 카메라 송출 (수동 명령어)
 

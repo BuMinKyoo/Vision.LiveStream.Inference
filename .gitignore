@@ -45,6 +45,7 @@ $RECYCLE.BIN/
 # Claude Code local settings
 .claude/
 
-# Large binaries / media (over GitHub 100MB limit) — fetch separately, see README
+# Large binaries / media — fetch separately, see README
 Tester/cameraTest/ffmpeg.exe
 Tester/cameraTest/Video3.mp4
+Tester/mediamtx_v*_windows_amd64/
