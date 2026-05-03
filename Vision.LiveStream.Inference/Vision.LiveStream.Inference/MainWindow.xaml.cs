@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Windows;
+using Vision.LiveStream.Inference.Services.Rtsp;
 using Vision.LiveStream.Inference.Services.Snapshot;
 using Vision.LiveStream.Inference.Services.Yolo;
 using Vision.LiveStream.Inference.ViewModels;
@@ -13,6 +14,7 @@ namespace Vision.LiveStream.Inference
     public partial class MainWindow : Window
     {
         private readonly YoloInferenceEngine? _engine;
+        private RtspViewModel? _rtspVm;
 
         public MainWindow()
         {
@@ -34,18 +36,27 @@ namespace Vision.LiveStream.Inference
 
             try
             {
-                // 추론 엔진 1개를 로드해서 도메인 어댑터들에게 공유.
-                // (지금은 정적 이미지 도메인만 쓰지만, RTSP 도메인도 같은 엔진을 받게 됨)
+                // 추론 엔진 1개를 두 도메인 어댑터가 공유 → ONNX 모델 메모리 1회만 로드.
                 _engine = new YoloInferenceEngine(modelPath);
-                var snapshotDetector = new SnapshotDetector(_engine);
-                DataContext = new MainViewModel(snapshotDetector);
 
-                Closed += (_, _) => _engine?.Dispose();
+                var snapshotDetector = new SnapshotDetector(_engine);
+                var rtspDetector = new RtspFrameDetector(_engine);
+
+                var snapshotVm = new SnapshotViewModel(snapshotDetector);
+                _rtspVm = new RtspViewModel(rtspDetector);
+
+                DataContext = new ShellViewModel(snapshotVm, _rtspVm);
+
+                Closed += (_, _) =>
+                {
+                    _rtspVm?.Dispose();
+                    _engine?.Dispose();
+                };
             }
             catch (Exception ex)
             {
                 MessageBox.Show(
-                    $"검출기 초기화 실패:\n{ex.Message}",
+                    $"초기화 실패:\n{ex.Message}",
                     "초기화 오류",
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);

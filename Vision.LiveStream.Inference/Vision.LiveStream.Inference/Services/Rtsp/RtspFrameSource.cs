@@ -48,6 +48,13 @@ namespace Vision.LiveStream.Inference.Services.Rtsp
         /// </summary>
         public event EventHandler<string>? StatusChanged;
 
+        /// <summary>
+        /// 프레임이 도착할 때마다 캡처 스레드에서 발생.
+        /// 영상 표시(WriteableBitmap)용 — 모든 프레임을 받음. 핸들러에서 무거운 작업 금지.
+        /// 추론은 별도로 Reader(채널)에서 latest-only 로 받을 것.
+        /// </summary>
+        public event EventHandler<RtspFrame>? FrameCaptured;
+
         public void Start()
         {
             if (_isRunning)
@@ -124,7 +131,10 @@ namespace Vision.LiveStream.Inference.Services.Rtsp
 
                     var frame = new RtspFrame(bgr, width, height, DateTime.UtcNow);
 
-                    // DropOldest 정책이라 항상 즉시 성공. 옛 프레임은 폐기됨.
+                    // 1) 영상 표시용 — 모든 프레임 즉시 알림 (구독자가 Dispatcher 로 던질 책임)
+                    FrameCaptured?.Invoke(this, frame);
+
+                    // 2) 추론용 — DropOldest 정책이라 항상 즉시 성공. 옛 프레임은 폐기됨.
                     _channel.Writer.TryWrite(frame);
                 }
             }

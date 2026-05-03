@@ -25,6 +25,7 @@ RTSP 스트림을 받아 실시간으로 추론하고 화면에 박스를 그리
 |---|---|
 | `Microsoft.ML.OnnxRuntime` | ONNX 모델 추론 (CPU). GPU 쓰려면 `.Gpu` 로 교체 |
 | `SixLabors.ImageSharp` | 이미지 픽셀 조작 (리사이즈, 정규화, HWC→CHW) |
+| `OpenCvSharp4` + `OpenCvSharp4.runtime.win` | RTSP `VideoCapture` 로 프레임 수신 |
 
 ---
 
@@ -42,12 +43,31 @@ Vision.LiveStream.Inference/                 <-- 저장소 루트
 │       └── run_cameras_udp.bat             UDP 모드 다중 카메라 실행
 └── Vision.LiveStream.Inference/             <-- 솔루션 + WPF 프로젝트
     └── Vision.LiveStream.Inference/
-        ├── Assets/Models/yolov8n.onnx
-        ├── Common/   (RelayCommand, AsyncRelayCommand, BaseViewModel)
-        ├── Models/   (Detection)
-        ├── Services/ (CocoLabels, ImagePreprocessor, YoloV8Detector)
-        ├── ViewModels/ (MainViewModel)
-        └── MainWindow.xaml(.cs)
+        ├── Assets/
+        │   ├── Models/yolov8n.onnx, yolov8n.pt
+        │   └── TestImages/{bus,zidane}.jpg            스냅샷 동작 확인용
+        ├── Common/   RelayCommand, AsyncRelayCommand, BaseViewModel
+        ├── Models/   Detection
+        ├── Services/
+        │   ├── CocoLabels.cs                          80개 라벨 (도메인 무관 공용)
+        │   ├── Yolo/                                  ★ 공통 추론 엔진
+        │   │   ├── LetterboxResult.cs                   전처리 결과 DTO
+        │   │   ├── YoloPreprocessor.cs                  string / byte[] 두 입력 → tensor
+        │   │   └── YoloInferenceEngine.cs               tensor → Detections (Run + NMS)
+        │   ├── Snapshot/                              ★ 정적 이미지 도메인
+        │   │   ├── ISnapshotDetector.cs
+        │   │   └── SnapshotDetector.cs                  파일 경로 → 결과
+        │   └── Rtsp/                                  ★ RTSP 도메인
+        │       ├── RtspFrame.cs                         BGR 프레임 DTO
+        │       ├── RtspFrameSource.cs                   VideoCapture + 1슬롯 latest-only
+        │       ├── IRtspFrameDetector.cs
+        │       └── RtspFrameDetector.cs                 byte[] BGR → 결과
+        ├── ViewModels/
+        │   ├── ShellViewModel.cs                      탭 두 개 컨테이너
+        │   ├── SnapshotViewModel.cs                   스냅샷 탭 상태
+        │   └── RtspViewModel.cs                       RTSP 탭 상태 + 스레드 분리 로직
+        ├── MainWindow.xaml(.cs)                       TabControl: 스냅샷 / RTSP
+        └── App.xaml(.cs)
 ```
 
 > 저장소에 포함된 것: 샘플 영상 2개(`Video1.mp4`, `Video2.mp4`), 배치 파일, ONNX 모델.
@@ -147,11 +167,59 @@ C# 앱을 짜기 전에 상용 플레이어로 먼저 받아보자.
 
 ---
 
-## 5. 다음 작업 (Step 4 본 진행)
+## 5. 앱 실행 — 스냅샷 / RTSP 두 가지 모드
 
-- [ ] RTSP 프레임 수신 스레드 (`OpenCvSharp` 또는 `LibVLCSharp` 검토)
-- [ ] AI 추론 스레드 (현재 `YoloV8Detector` 재활용 + 프레임용 `Preprocess(byte[])` 오버로드 추가)
-- [ ] UI 렌더링은 `Dispatcher.BeginInvoke` 로만
-- [ ] 큐 기반 백프레셔(최신 프레임만 유지) 처리
+WPF 앱은 상단 탭으로 두 시나리오를 분리.
+
+### 스냅샷 탭 (Step 3 영역)
+
+`Assets/TestImages/bus.jpg` 같은 정적 이미지 한 장에서 객체 검출.
+
+1. [이미지 열기...] → 파일 선택
+2. [객체 검출] → 박스 + 라벨 + 신뢰도 표시
+
+> 추론 엔진 자체 검증용. 모델 파일 / Onnx Runtime 환경이 정상 동작하는지 가장 빠르게 확인하는 경로.
+
+### RTSP 탭 (Step 4 영역)
+
+§3·§4 절차로 띄운 RTSP 스트림(`rtsp://localhost:8554/cam1` 등)을 받아 실시간 추론.
+
+1. URL 입력 (기본값 `rtsp://localhost:8554/cam1`)
+2. [연결] → 영상 표시 시작 + 박스 오버레이 (노란색)
+3. 상단에 **화면 FPS** / **추론 FPS** 두 값이 따로 표시됨
+4. [중지] 로 끊기
+
+#### 스레드 분리 구조 (Step 4 핵심)
+
+```
+[VideoCapture Thread]                            [Inference Task]               [UI Dispatcher]
+RtspFrameSource.CaptureLoop                                                      WriteableBitmap.WritePixels
+  ↓ (모든 프레임)                                                                 Detections.Add(...)
+  ├── FrameCaptured 이벤트 ────────────────────────────────────────────────────► 영상 표시 (Render 우선)
+  │
+  └── Channel(DropOldest, 1) ───────► Reader.ReadAllAsync ─► Detect ─────────► 박스 갱신 (Background 우선)
+```
+
+- 영상 표시는 추론을 기다리지 않음 → "**화면 FPS ≈ 카메라 FPS**" 유지
+- 추론은 1슬롯 latest-only 큐로 받아 자기 페이스대로 처리 → "**추론 FPS** 는 모델 속도에 따름"
+- 두 FPS 값이 다르면 분리가 잘 동작 중 (CPU YOLOv8n 기준 화면 30 / 추론 5~15 정도)
+
+### 동작 검증 시나리오
+
+1. `mediamtx.exe` 실행 → `[RTSP] listener opened on :8554`
+2. `Tester/cameraTest/run_cameras_udp.bat` 실행 → `Found N video files...`
+3. VLC 로 먼저 수신 확인 (선택)
+4. WPF 앱 실행 → RTSP 탭 → URL 입력 → [연결]
+5. 차/사람 등이 나오는 영상이면 박스가 따라오는지 확인
+
+---
+
+## 6. 다음 작업 (Step 5 — 다중 채널)
+
+- [ ] 단일 채널 검증 후, `RtspViewModel` 을 N개 인스턴스화하는 그리드 UI (4ch/8ch)
+- [ ] `YoloInferenceEngine` 1개를 N개 채널이 공유 (직렬 추론 큐 검토)
+- [ ] dotMemory / dotTrace 로 GC 스파이크 / 메모리 폭발 지점 측정
+- [ ] 매 프레임 `byte[]` 새 할당 → 풀링 / 재사용으로 LOH 부담 줄이기
+- [ ] 끊김 자동 재연결 정책
 
 ---

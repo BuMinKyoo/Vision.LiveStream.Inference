@@ -13,7 +13,7 @@ using Vision.LiveStream.Inference.Services.Snapshot;
 
 namespace Vision.LiveStream.Inference.ViewModels
 {
-    public class MainViewModel : BaseViewModel
+    public class SnapshotViewModel : BaseViewModel
     {
         private readonly ISnapshotDetector _detector;
 
@@ -26,7 +26,7 @@ namespace Vision.LiveStream.Inference.ViewModels
 
         private CancellationTokenSource? _cts;
 
-        public MainViewModel(ISnapshotDetector detector)
+        public SnapshotViewModel(ISnapshotDetector detector)
         {
             _detector = detector;
             LoadImageCommand = new RelayCommand(LoadImage, CanLoadImage);
