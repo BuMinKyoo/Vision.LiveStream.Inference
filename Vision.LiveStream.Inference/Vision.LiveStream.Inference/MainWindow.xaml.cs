@@ -1,7 +1,8 @@
 using System;
 using System.IO;
 using System.Windows;
-using Vision.LiveStream.Inference.Services;
+using Vision.LiveStream.Inference.Services.Snapshot;
+using Vision.LiveStream.Inference.Services.Yolo;
 using Vision.LiveStream.Inference.ViewModels;
 
 namespace Vision.LiveStream.Inference
@@ -11,7 +12,7 @@ namespace Vision.LiveStream.Inference
     /// </summary>
     public partial class MainWindow : Window
     {
-        private readonly YoloV8Detector? _detector;
+        private readonly YoloInferenceEngine? _engine;
 
         public MainWindow()
         {
@@ -33,10 +34,13 @@ namespace Vision.LiveStream.Inference
 
             try
             {
-                _detector = new YoloV8Detector(modelPath);
-                DataContext = new MainViewModel(_detector);
+                // 추론 엔진 1개를 로드해서 도메인 어댑터들에게 공유.
+                // (지금은 정적 이미지 도메인만 쓰지만, RTSP 도메인도 같은 엔진을 받게 됨)
+                _engine = new YoloInferenceEngine(modelPath);
+                var snapshotDetector = new SnapshotDetector(_engine);
+                DataContext = new MainViewModel(snapshotDetector);
 
-                Closed += (_, _) => _detector?.Dispose();
+                Closed += (_, _) => _engine?.Dispose();
             }
             catch (Exception ex)
             {

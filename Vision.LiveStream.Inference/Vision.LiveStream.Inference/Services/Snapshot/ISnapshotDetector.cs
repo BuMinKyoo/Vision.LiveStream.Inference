@@ -1,15 +1,14 @@
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Vision.LiveStream.Inference.Models;
 
-namespace Vision.LiveStream.Inference.Services
+namespace Vision.LiveStream.Inference.Services.Snapshot
 {
     /// <summary>
-    /// 이미지에서 객체를 검출하는 추상화. YOLOv8 외에 다른 모델로 교체 가능하도록 분리.
+    /// 디스크 이미지 파일(스냅샷)에서 객체를 검출하는 도메인 추상화.
     /// </summary>
-    public interface IObjectDetector : IDisposable
+    public interface ISnapshotDetector
     {
         /// <summary>
         /// 입력 이미지 경로의 객체를 검출. 결과 좌표는 원본 이미지 픽셀 기준.

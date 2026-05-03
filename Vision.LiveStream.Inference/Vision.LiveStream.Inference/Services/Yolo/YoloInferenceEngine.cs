@@ -2,18 +2,20 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using Vision.LiveStream.Inference.Models;
+using Vision.LiveStream.Inference.Services;
 
-namespace Vision.LiveStream.Inference.Services
+namespace Vision.LiveStream.Inference.Services.Yolo
 {
     /// <summary>
-    /// YOLOv8 ONNX 모델을 사용한 객체 검출기.
+    /// YOLOv8 ONNX 모델의 raw 추론 엔진. 책임 1개:
+    /// "이미 만들어진 LetterboxResult 를 받아 검출 결과 리스트를 돌려준다".
+    /// 도메인(정적 이미지/RTSP) 무관. InferenceSession 의 단일 소유자.
     /// 출력 텐서: [1, 84, 8400] = (cx, cy, w, h, class0..class79) × 8400 후보.
     /// </summary>
-    public sealed class YoloV8Detector : IObjectDetector
+    public sealed class YoloInferenceEngine : IDisposable
     {
         private const float ConfidenceThreshold = 0.25f;
         private const float IouThreshold = 0.45f;
@@ -21,33 +23,30 @@ namespace Vision.LiveStream.Inference.Services
         private readonly InferenceSession _session;
         private readonly string _inputName;
 
-        public YoloV8Detector(string modelPath)
+        public YoloInferenceEngine(string modelPath)
         {
             _session = new InferenceSession(modelPath);
             _inputName = _session.InputMetadata.Keys.First();
         }
 
-        public Task<IReadOnlyList<Detection>> DetectAsync(string imagePath, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// 동기 추론. 호출자 쪽에서 Task.Run 등으로 스레드 분리할 것.
+        /// 같은 세션을 여러 스레드에서 동시에 호출하면 안 됨 (직렬화 필요).
+        /// </summary>
+        public IReadOnlyList<Detection> Detect(LetterboxResult lb, CancellationToken cancellationToken = default)
         {
-            return Task.Run<IReadOnlyList<Detection>>(() =>
-            {
-                cancellationToken.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested();
 
-                LetterboxResult lb = ImagePreprocessor.Preprocess(imagePath);
+            var input = NamedOnnxValue.CreateFromTensor(_inputName, lb.Tensor);
+            using IDisposableReadOnlyCollection<DisposableNamedOnnxValue> results = _session.Run(new[] { input });
 
-                cancellationToken.ThrowIfCancellationRequested();
+            Tensor<float> output = results.First().AsTensor<float>();
 
-                var input = NamedOnnxValue.CreateFromTensor(_inputName, lb.Tensor);
-                using IDisposableReadOnlyCollection<DisposableNamedOnnxValue> results = _session.Run(new[] { input });
+            List<Detection> candidates = ParseOutput(output, lb);
 
-                Tensor<float> output = results.First().AsTensor<float>();
+            cancellationToken.ThrowIfCancellationRequested();
 
-                List<Detection> candidates = ParseOutput(output, lb);
-
-                cancellationToken.ThrowIfCancellationRequested();
-
-                return ApplyNms(candidates, IouThreshold);
-            }, cancellationToken);
+            return ApplyNms(candidates, IouThreshold);
         }
 
         private static List<Detection> ParseOutput(Tensor<float> output, LetterboxResult lb)

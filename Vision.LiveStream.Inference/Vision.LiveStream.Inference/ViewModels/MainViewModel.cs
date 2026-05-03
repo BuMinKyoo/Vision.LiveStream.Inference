@@ -9,13 +9,13 @@ using System.Windows.Media.Imaging;
 using Microsoft.Win32;
 using Vision.LiveStream.Inference.Common;
 using Vision.LiveStream.Inference.Models;
-using Vision.LiveStream.Inference.Services;
+using Vision.LiveStream.Inference.Services.Snapshot;
 
 namespace Vision.LiveStream.Inference.ViewModels
 {
     public class MainViewModel : BaseViewModel
     {
-        private readonly IObjectDetector _detector;
+        private readonly ISnapshotDetector _detector;
 
         private string? _imagePath;
         private BitmapImage? _imageSource;
@@ -26,7 +26,7 @@ namespace Vision.LiveStream.Inference.ViewModels
 
         private CancellationTokenSource? _cts;
 
-        public MainViewModel(IObjectDetector detector)
+        public MainViewModel(ISnapshotDetector detector)
         {
             _detector = detector;
             LoadImageCommand = new RelayCommand(LoadImage, CanLoadImage);
