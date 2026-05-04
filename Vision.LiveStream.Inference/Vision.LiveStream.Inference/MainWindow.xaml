@@ -5,11 +5,13 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:Vision.LiveStream.Inference.ViewModels"
         xmlns:models="clr-namespace:Vision.LiveStream.Inference.Models"
+        xmlns:common="clr-namespace:Vision.LiveStream.Inference.Common"
         mc:Ignorable="d"
         Title="Vision.LiveStream.Inference (YOLOv8)" Height="720" Width="1100">
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <common:InverseBoolConverter x:Key="InverseBoolConverter"/>
     </Window.Resources>
 
     <TabControl>
@@ -139,6 +141,12 @@
                     <TextBlock Text="RTSP URL:" VerticalAlignment="Center" Margin="0,0,6,0"/>
                     <TextBox Text="{Binding RtspUrl, UpdateSourceTrigger=PropertyChanged}"
                              Width="320" Height="28" VerticalContentAlignment="Center"/>
+                    <RadioButton Content="CPU" VerticalAlignment="Center" Margin="12,0,0,0"
+                                 IsChecked="{Binding UseGpu, Converter={StaticResource InverseBoolConverter}}"
+                                 IsEnabled="{Binding IsStreaming, Converter={StaticResource InverseBoolConverter}}"/>
+                    <RadioButton Content="GPU" VerticalAlignment="Center" Margin="8,0,0,0"
+                                 IsChecked="{Binding UseGpu}"
+                                 IsEnabled="{Binding IsStreaming, Converter={StaticResource InverseBoolConverter}}"/>
                     <Button Content="연결"
                             Command="{Binding ConnectCommand}"
                             Width="80" Height="32" Margin="8,0,0,0"/>

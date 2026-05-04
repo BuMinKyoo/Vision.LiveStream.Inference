@@ -109,20 +109,25 @@ namespace Vision.LiveStream.Inference.Services.Rtsp
                 mat = new Mat(); // 프레임 버퍼 (매 Read마다 재사용)
                 int consecutiveFailures = 0;
 
+                // 실제 스트림 fps 기준으로 1초치 프레임 수를 계산
+                // fps를 못 읽으면(0 이하) 30fps로 fallback
+                double streamFps = capture.Fps > 0 ? capture.Fps : 30.0;
+                int maxFailures = (int)Math.Ceiling(streamFps);
+
                 while (!ct.IsCancellationRequested)
                 {
-                    // Read: 다음 프레임이 올 때까지 블로킹 (30fps면 약 33ms마다 반환)
+                    // Read: 다음 프레임이 올 때까지 블로킹 (fps에 따라 간격 다름)
                     // 디코딩 결과는 BGR row-major 포맷으로 mat에 채워짐
                     if (!capture.Read(mat) || mat.Empty())
                     {
                         consecutiveFailures++;
-                        if (consecutiveFailures >= 30)
+                        if (consecutiveFailures >= maxFailures)
                         {
-                            // 33ms × 30 = 약 1초간 프레임 수신 실패 → 연결 끊김으로 판단
+                            // 1초치 프레임을 연속으로 못 받으면 연결 끊김으로 판단
                             RaiseStatus("프레임 수신 끊김");
                             break;
                         }
-                        Thread.Sleep(33);
+                        Thread.Sleep((int)(1000.0 / streamFps)); // fps에 맞는 대기 시간
                         continue;
                     }
 

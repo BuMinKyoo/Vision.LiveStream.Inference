@@ -13,7 +13,8 @@ namespace Vision.LiveStream.Inference
     /// </summary>
     public partial class MainWindow : Window
     {
-        private readonly YoloInferenceEngine? _engine;
+        private readonly YoloInferenceEngine? _cpuEngine;
+        private readonly YoloInferenceEngine? _gpuEngine;
         private SnapshotViewModel? _snapshotVm;
         private RtspViewModel? _rtspVm;
 
@@ -37,14 +38,30 @@ namespace Vision.LiveStream.Inference
 
             try
             {
-                // 추론 엔진 1개를 두 도메인 어댑터가 공유 → ONNX 모델 메모리 1회만 로드.
-                _engine = new YoloInferenceEngine(modelPath);
+                _cpuEngine = new YoloInferenceEngine(modelPath, InferenceDevice.Cpu);
 
-                var snapshotDetector = new SnapshotDetector(_engine);
-                var rtspDetector = new RtspFrameDetector(_engine);
+                // GPU 엔진 초기화 실패(CUDA 미설치 등)해도 앱은 CPU 모드로 계속 실행
+                YoloInferenceEngine? gpuEngine = null;
+                try
+                {
+                    gpuEngine = new YoloInferenceEngine(modelPath, InferenceDevice.Gpu);
+                    _gpuEngine = gpuEngine;
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(
+                        $"GPU 초기화 실패 - CPU 모드로만 실행됩니다.\n\n{ex.Message}",
+                        "GPU 경고",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+
+                var snapshotDetector = new SnapshotDetector(_cpuEngine);
+                var cpuRtspDetector = new RtspFrameDetector(_cpuEngine);
+                var gpuRtspDetector = new RtspFrameDetector(_gpuEngine ?? _cpuEngine); // GPU 실패 시 CPU로 폴백
 
                 _snapshotVm = new SnapshotViewModel(snapshotDetector);
-                _rtspVm = new RtspViewModel(rtspDetector);
+                _rtspVm = new RtspViewModel(cpuRtspDetector, gpuRtspDetector);
 
                 DataContext = new ShellViewModel(_snapshotVm, _rtspVm);
 
@@ -52,7 +69,8 @@ namespace Vision.LiveStream.Inference
                 {
                     _snapshotVm?.Dispose();
                     _rtspVm?.Dispose();
-                    _engine?.Dispose();
+                    _cpuEngine?.Dispose();
+                    _gpuEngine?.Dispose();
                 };
             }
             catch (Exception ex)

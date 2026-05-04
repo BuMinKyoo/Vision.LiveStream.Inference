@@ -23,11 +23,13 @@ namespace Vision.LiveStream.Inference.ViewModels
     /// </summary>
     public class RtspViewModel : BaseViewModel, IDisposable
     {
-        private readonly IRtspFrameDetector _detector;
+        private readonly IRtspFrameDetector _cpuDetector;
+        private readonly IRtspFrameDetector _gpuDetector;
         private readonly Dispatcher _dispatcher;
 
         private string _rtspUrl = "rtsp://localhost:8554/cam1";
         private bool _isStreaming;
+        private bool _useGpu;
         private string _statusMessage = "RTSP URL 입력 후 [연결] 버튼을 누르세요.";
         private WriteableBitmap? _imageSource;
         private int _imageWidth;
@@ -42,12 +44,27 @@ namespace Vision.LiveStream.Inference.ViewModels
         private readonly FpsCounter _displayFpsCounter = new();
         private readonly FpsCounter _inferenceFpsCounter = new();
 
-        public RtspViewModel(IRtspFrameDetector detector)
+        public RtspViewModel(IRtspFrameDetector cpuDetector, IRtspFrameDetector gpuDetector)
         {
-            _detector = detector;
+            _cpuDetector = cpuDetector;
+            _gpuDetector = gpuDetector;
             _dispatcher = Application.Current.Dispatcher;
             ConnectCommand = new RelayCommand(Connect, () => !IsStreaming && !string.IsNullOrWhiteSpace(RtspUrl));
             DisconnectCommand = new RelayCommand(Disconnect, () => IsStreaming);
+        }
+
+        // 연결 시 사용할 디텍터 (UseGpu 값에 따라 결정)
+        private IRtspFrameDetector ActiveDetector => _useGpu ? _gpuDetector : _cpuDetector;
+
+        public bool UseGpu
+        {
+            get => _useGpu;
+            set
+            {
+                if (_useGpu == value) return;
+                _useGpu = value;
+                OnPropertyChanged();
+            }
         }
 
         public ObservableCollection<Detection> Detections { get; } = new();
@@ -313,7 +330,7 @@ namespace Vision.LiveStream.Inference.ViewModels
                     }
 
                     // DetectAsync 내부: 전처리(letterbox) → ONNX 추론 → 후처리(NMS) → Detection 리스트 반환
-                    IReadOnlyList<Detection> detections = await _detector
+                    IReadOnlyList<Detection> detections = await ActiveDetector
                         .DetectAsync(frame.BgrPixels, frame.Width, frame.Height, ct)
                         .ConfigureAwait(false); // UI 스레드로 복귀할 필요 없음
 

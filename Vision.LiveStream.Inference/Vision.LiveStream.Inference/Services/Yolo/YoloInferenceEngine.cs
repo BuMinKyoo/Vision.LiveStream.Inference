@@ -15,6 +15,8 @@ namespace Vision.LiveStream.Inference.Services.Yolo
     /// 도메인(정적 이미지/RTSP) 무관. InferenceSession 의 단일 소유자.
     /// 출력 텐서: [1, 84, 8400] = (cx, cy, w, h, class0..class79) × 8400 후보.
     /// </summary>
+    public enum InferenceDevice { Cpu, Gpu }
+
     public sealed class YoloInferenceEngine : IDisposable
     {
         private const float ConfidenceThreshold = 0.25f;
@@ -23,9 +25,28 @@ namespace Vision.LiveStream.Inference.Services.Yolo
         private readonly InferenceSession _session;
         private readonly string _inputName;
 
-        public YoloInferenceEngine(string modelPath)
+        public InferenceDevice Device { get; }
+
+        public YoloInferenceEngine(string modelPath, InferenceDevice device = InferenceDevice.Cpu)
         {
-            _session = new InferenceSession(modelPath);
+            Device = device;
+            var options = new SessionOptions();
+
+            if (device == InferenceDevice.Gpu)
+            {
+                try
+                {
+                    // CUDA 실행 프로바이더 추가 (GPU 인덱스 0번)
+                    // CUDA 미설치 환경이면 예외 발생 → CPU로 폴백
+                    options.AppendExecutionProvider_CUDA(0);
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException($"GPU(CUDA) 초기화 실패: {ex.Message}", ex);
+                }
+            }
+
+            _session = new InferenceSession(modelPath, options);
             _inputName = _session.InputMetadata.Keys.First();
         }
 
