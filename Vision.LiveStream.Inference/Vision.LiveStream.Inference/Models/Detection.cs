@@ -5,19 +5,14 @@ namespace Vision.LiveStream.Inference.Models
     /// </summary>
     public sealed class Detection
     {
-        public float X { get; init; }
+        public float X { get; init; }          // 박스 좌상단 X 픽셀 좌표
+        public float Y { get; init; }          // 박스 좌상단 Y 픽셀 좌표
+        public float Width { get; init; }      // 박스 너비 (픽셀)
+        public float Height { get; init; }     // 박스 높이 (픽셀)
 
-        public float Y { get; init; }
-
-        public float Width { get; init; }
-
-        public float Height { get; init; }
-
-        public int ClassId { get; init; }
-
-        public string ClassName { get; init; } = string.Empty;
-
-        public float Confidence { get; init; }
+        public int ClassId { get; init; }      // COCO 클래스 인덱스 (0=person, 2=car ...)
+        public string ClassName { get; init; } = string.Empty; // ClassId에 대응하는 라벨 문자열
+        public float Confidence { get; init; } // 신뢰도 0~1 (0.25 미만은 ParseOutput에서 이미 걸러짐)
 
         public override string ToString()
         {

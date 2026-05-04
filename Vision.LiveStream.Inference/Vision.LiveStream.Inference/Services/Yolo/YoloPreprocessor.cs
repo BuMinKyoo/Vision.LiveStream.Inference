@@ -40,6 +40,8 @@ namespace Vision.LiveStream.Inference.Services.Yolo
         private static Image<Rgb24> BgrBytesToImage(byte[] bgr, int width, int height)
         {
             var image = new Image<Rgb24>(width, height);
+
+            // ProcessPixelRows + GetRowSpan: Span 기반 zero-copy 접근 (직접 인덱싱보다 빠름)
             image.ProcessPixelRows(accessor =>
             {
                 int idx = 0;
@@ -48,7 +50,8 @@ namespace Vision.LiveStream.Inference.Services.Yolo
                     var row = accessor.GetRowSpan(y);
                     for (int x = 0; x < width; x++)
                     {
-                        // OpenCV BGR → ImageSharp Rgb24(RGB) 채널 스왑
+                        // OpenCV는 BGR 순서, ImageSharp Rgb24는 RGB 순서 → B↔R 스왑
+                        // 스왑 안 하면 모델이 색상을 반대로 인식해 검출 정확도 크게 저하
                         row[x] = new Rgb24(bgr[idx + 2], bgr[idx + 1], bgr[idx]);
                         idx += 3;
                     }
@@ -62,20 +65,24 @@ namespace Vision.LiveStream.Inference.Services.Yolo
             int origW = image.Width;
             int origH = image.Height;
 
+            // 종횡비 유지: 가로/세로 중 더 큰 쪽이 640에 딱 맞도록 축소 비율 결정
             float scale = System.Math.Min(
                 (float)InputSize / origW,
                 (float)InputSize / origH);
 
             int newW = (int)System.Math.Round(origW * scale);
             int newH = (int)System.Math.Round(origH * scale);
+
+            // 640×640 안에서 이미지를 중앙에 배치하기 위한 좌우/상하 패딩 크기
             int padX = (InputSize - newW) / 2;
             int padY = (InputSize - newH) / 2;
 
             image.Mutate(x => x.Resize(newW, newH));
 
+            // ONNX 입력 텐서: [배치=1, 채널=3, 높이=640, 너비=640] (NCHW 형식)
             var tensor = new DenseTensor<float>(new[] { 1, 3, InputSize, InputSize });
 
-            // 회색 패딩으로 채우기 (letterbox 빈 영역)
+            // 전체를 회색(114/255)으로 초기화 → letterbox 빈 영역 색 (YOLOv8 학습 시 표준)
             for (int c = 0; c < 3; c++)
             {
                 for (int y = 0; y < InputSize; y++)
@@ -87,7 +94,11 @@ namespace Vision.LiveStream.Inference.Services.Yolo
                 }
             }
 
-            // 리사이즈된 이미지 픽셀을 패딩된 영역에 복사 (HWC → CHW + 정규화 동시)
+            // 리사이즈된 이미지를 패딩 오프셋만큼 밀어서 텐서에 복사
+            // 동시에 세 가지 변환 수행:
+            //   HWC(Height×Width×Channel) → CHW(Channel×Height×Width): ONNX가 요구하는 차원 순서
+            //   0~255 → 0~1 정규화
+            //   (padX, padY) 오프셋으로 이미지를 중앙에 배치
             image.ProcessPixelRows(accessor =>
             {
                 for (int y = 0; y < newH; y++)
@@ -96,13 +107,14 @@ namespace Vision.LiveStream.Inference.Services.Yolo
                     for (int x = 0; x < newW; x++)
                     {
                         Rgb24 px = row[x];
-                        tensor[0, 0, y + padY, x + padX] = px.R / 255f;
-                        tensor[0, 1, y + padY, x + padX] = px.G / 255f;
-                        tensor[0, 2, y + padY, x + padX] = px.B / 255f;
+                        tensor[0, 0, y + padY, x + padX] = px.R / 255f; // R 채널
+                        tensor[0, 1, y + padY, x + padX] = px.G / 255f; // G 채널
+                        tensor[0, 2, y + padY, x + padX] = px.B / 255f; // B 채널
                     }
                 }
             });
 
+            // scale, padX, padY를 같이 반환 → 추론 후 박스 좌표를 원본 해상도로 역변환할 때 사용
             return new LetterboxResult(tensor, scale, padX, padY, origW, origH);
         }
     }

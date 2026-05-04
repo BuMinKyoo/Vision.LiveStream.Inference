@@ -14,6 +14,7 @@ namespace Vision.LiveStream.Inference
     public partial class MainWindow : Window
     {
         private readonly YoloInferenceEngine? _engine;
+        private SnapshotViewModel? _snapshotVm;
         private RtspViewModel? _rtspVm;
 
         public MainWindow()
@@ -42,13 +43,14 @@ namespace Vision.LiveStream.Inference
                 var snapshotDetector = new SnapshotDetector(_engine);
                 var rtspDetector = new RtspFrameDetector(_engine);
 
-                var snapshotVm = new SnapshotViewModel(snapshotDetector);
+                _snapshotVm = new SnapshotViewModel(snapshotDetector);
                 _rtspVm = new RtspViewModel(rtspDetector);
 
-                DataContext = new ShellViewModel(snapshotVm, _rtspVm);
+                DataContext = new ShellViewModel(_snapshotVm, _rtspVm);
 
                 Closed += (_, _) =>
                 {
+                    _snapshotVm?.Dispose();
                     _rtspVm?.Dispose();
                     _engine?.Dispose();
                 };

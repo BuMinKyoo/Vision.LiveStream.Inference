@@ -22,10 +22,15 @@ namespace Vision.LiveStream.Inference.Services.Snapshot
 
         public Task<IReadOnlyList<Detection>> DetectAsync(string imagePath, CancellationToken cancellationToken = default)
         {
+            // Task.Run: UI 스레드를 막지 않도록 전처리 + 추론을 ThreadPool로 분리
             return Task.Run<IReadOnlyList<Detection>>(() =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
+
+                // 전처리: 파일 읽기 → letterbox 리사이즈 → 정규화 → CHW 텐서 [1,3,640,640]
                 LetterboxResult lb = YoloPreprocessor.Preprocess(imagePath);
+
+                // 추론: ONNX 세션 실행 → 후처리(NMS) → 원본 좌표계 Detection 리스트
                 return _engine.Detect(lb, cancellationToken);
             }, cancellationToken);
         }

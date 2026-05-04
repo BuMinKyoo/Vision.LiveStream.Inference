@@ -13,7 +13,7 @@ using Vision.LiveStream.Inference.Services.Snapshot;
 
 namespace Vision.LiveStream.Inference.ViewModels
 {
-    public class SnapshotViewModel : BaseViewModel
+    public class SnapshotViewModel : BaseViewModel, IDisposable
     {
         private readonly ISnapshotDetector _detector;
 
@@ -227,6 +227,13 @@ namespace Vision.LiveStream.Inference.ViewModels
             {
                 IsBusy = false;
             }
+        }
+
+        public void Dispose()
+        {
+            _cts?.Cancel();
+            _cts?.Dispose();
+            _cts = null;
         }
     }
 }

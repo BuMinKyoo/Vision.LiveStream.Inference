@@ -63,9 +63,12 @@ namespace Vision.LiveStream.Inference.Services.Rtsp
             }
 
             _cts = new CancellationTokenSource();
+
+            // VideoCapture.Read()가 블로킹 호출이라 Task(ThreadPool)가 아닌 전용 Thread 사용
+            // ThreadPool 스레드를 영구 점유하면 다른 Task들이 스레드를 못 얻어 굶어 죽음
             _captureThread = new Thread(() => CaptureLoop(_cts.Token))
             {
-                IsBackground = true,
+                IsBackground = true, // 메인 스레드 종료 시 이 스레드도 자동 종료
                 Name = $"RtspCapture[{_url}]"
             };
             _isRunning = true;
@@ -80,8 +83,8 @@ namespace Vision.LiveStream.Inference.Services.Rtsp
             }
 
             _isRunning = false;
-            _cts?.Cancel();
-            _captureThread?.Join(TimeSpan.FromSeconds(2));
+            _cts?.Cancel(); // CaptureLoop의 ct.IsCancellationRequested를 true로 만들어 루프 탈출 유도
+            _captureThread?.Join(TimeSpan.FromSeconds(2)); // 캡처 스레드가 완전히 끝날 때까지 최대 2초 대기
             _captureThread = null;
             _cts?.Dispose();
             _cts = null;
@@ -93,6 +96,7 @@ namespace Vision.LiveStream.Inference.Services.Rtsp
             Mat? mat = null;
             try
             {
+                // VideoCapture: 내부적으로 FFmpeg을 사용해 RTSP 패킷 수신 → 디먹싱 → H.264 디코딩
                 capture = new VideoCapture(_url);
                 if (!capture.IsOpened())
                 {
@@ -102,17 +106,19 @@ namespace Vision.LiveStream.Inference.Services.Rtsp
 
                 RaiseStatus($"연결됨: {_url} ({capture.FrameWidth}x{capture.FrameHeight} @ {capture.Fps:F1} fps)");
 
-                mat = new Mat();
+                mat = new Mat(); // 프레임 버퍼 (매 Read마다 재사용)
                 int consecutiveFailures = 0;
 
                 while (!ct.IsCancellationRequested)
                 {
+                    // Read: 다음 프레임이 올 때까지 블로킹 (30fps면 약 33ms마다 반환)
+                    // 디코딩 결과는 BGR row-major 포맷으로 mat에 채워짐
                     if (!capture.Read(mat) || mat.Empty())
                     {
                         consecutiveFailures++;
                         if (consecutiveFailures >= 30)
                         {
-                            // 1초간 못 읽으면(33ms × 30) 끊긴 걸로 판단
+                            // 33ms × 30 = 약 1초간 프레임 수신 실패 → 연결 끊김으로 판단
                             RaiseStatus("프레임 수신 끊김");
                             break;
                         }
@@ -124,17 +130,22 @@ namespace Vision.LiveStream.Inference.Services.Rtsp
 
                     int width = mat.Width;
                     int height = mat.Height;
-                    int byteCount = width * height * 3;
+                    int channels = mat.Channels(); // 보통 3(BGR), 드물게 4(BGRA)
+                    int byteCount = width * height * channels;
 
+                    // mat.Data: 네이티브(C++) 메모리 주소 (IntPtr)
+                    // Marshal.Copy: 네이티브 메모리 → 관리 메모리(byte[])로 복사
+                    // 복사하지 않으면 다음 Read()에서 mat 버퍼가 덮어써져 데이터가 깨짐
                     var bgr = new byte[byteCount];
                     Marshal.Copy(mat.Data, bgr, 0, byteCount);
 
                     var frame = new RtspFrame(bgr, width, height, DateTime.UtcNow);
 
-                    // 1) 영상 표시용 — 모든 프레임 즉시 알림 (구독자가 Dispatcher 로 던질 책임)
+                    // 영상 표시용: 모든 프레임을 이벤트로 즉시 알림 (구독자가 Dispatcher로 마샬링할 책임)
                     FrameCaptured?.Invoke(this, frame);
 
-                    // 2) 추론용 — DropOldest 정책이라 항상 즉시 성공. 옛 프레임은 폐기됨.
+                    // 추론용: 1슬롯 큐에 넣음. DropOldest 정책이라 이전 프레임은 자동 폐기
+                    // → 추론 루프가 느려도 항상 최신 프레임만 처리하게 됨
                     _channel.Writer.TryWrite(frame);
                 }
             }
@@ -146,7 +157,7 @@ namespace Vision.LiveStream.Inference.Services.Rtsp
             {
                 mat?.Dispose();
                 capture?.Dispose();
-                _channel.Writer.TryComplete();
+                _channel.Writer.TryComplete(); // 채널을 닫아 추론 루프의 ReadAllAsync가 정상 종료되게 함
                 RaiseStatus("정지");
             }
         }
