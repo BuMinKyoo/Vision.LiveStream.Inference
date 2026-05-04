@@ -11,6 +11,7 @@ using System.Windows.Threading;
 using Vision.LiveStream.Inference.Common;
 using Vision.LiveStream.Inference.Models;
 using Vision.LiveStream.Inference.Services.Rtsp;
+using Vision.LiveStream.Inference.Services.Yolo;
 
 namespace Vision.LiveStream.Inference.ViewModels
 {
@@ -24,12 +25,13 @@ namespace Vision.LiveStream.Inference.ViewModels
     public class RtspViewModel : BaseViewModel, IDisposable
     {
         private readonly IRtspFrameDetector _cpuDetector;
+        private readonly IRtspFrameDetector _dmlDetector;
         private readonly IRtspFrameDetector _gpuDetector;
         private readonly Dispatcher _dispatcher;
 
         private string _rtspUrl = "rtsp://localhost:8554/cam1";
         private bool _isStreaming;
-        private bool _useGpu;
+        private InferenceDevice _selectedDevice = InferenceDevice.Cpu;
         private string _statusMessage = "RTSP URL 입력 후 [연결] 버튼을 누르세요.";
         private WriteableBitmap? _imageSource;
         private int _imageWidth;
@@ -44,27 +46,48 @@ namespace Vision.LiveStream.Inference.ViewModels
         private readonly FpsCounter _displayFpsCounter = new();
         private readonly FpsCounter _inferenceFpsCounter = new();
 
-        public RtspViewModel(IRtspFrameDetector cpuDetector, IRtspFrameDetector gpuDetector)
+        public RtspViewModel(IRtspFrameDetector cpuDetector, IRtspFrameDetector dmlDetector, IRtspFrameDetector gpuDetector)
         {
             _cpuDetector = cpuDetector;
+            _dmlDetector = dmlDetector;
             _gpuDetector = gpuDetector;
             _dispatcher = Application.Current.Dispatcher;
             ConnectCommand = new RelayCommand(Connect, () => !IsStreaming && !string.IsNullOrWhiteSpace(RtspUrl));
             DisconnectCommand = new RelayCommand(Disconnect, () => IsStreaming);
         }
 
-        // 연결 시 사용할 디텍터 (UseGpu 값에 따라 결정)
-        private IRtspFrameDetector ActiveDetector => _useGpu ? _gpuDetector : _cpuDetector;
+        // 연결 시 선택된 디바이스에 해당하는 디텍터 반환
+        private IRtspFrameDetector ActiveDetector => _selectedDevice switch
+        {
+            InferenceDevice.DirectML => _dmlDetector,
+            InferenceDevice.Gpu     => _gpuDetector,
+            _                       => _cpuDetector,
+        };
+
+        // RadioButton 바인딩용 프로퍼티 (WPF에서 enum을 RadioButton에 직접 바인딩하기 번거로워 bool 3개로 노출)
+        public bool UseCpu
+        {
+            get => _selectedDevice == InferenceDevice.Cpu;
+            set { if (value) { _selectedDevice = InferenceDevice.Cpu; NotifyDeviceChanged(); } }
+        }
+
+        public bool UseDirectML
+        {
+            get => _selectedDevice == InferenceDevice.DirectML;
+            set { if (value) { _selectedDevice = InferenceDevice.DirectML; NotifyDeviceChanged(); } }
+        }
 
         public bool UseGpu
         {
-            get => _useGpu;
-            set
-            {
-                if (_useGpu == value) return;
-                _useGpu = value;
-                OnPropertyChanged();
-            }
+            get => _selectedDevice == InferenceDevice.Gpu;
+            set { if (value) { _selectedDevice = InferenceDevice.Gpu; NotifyDeviceChanged(); } }
+        }
+
+        private void NotifyDeviceChanged()
+        {
+            OnPropertyChanged(nameof(UseCpu));
+            OnPropertyChanged(nameof(UseDirectML));
+            OnPropertyChanged(nameof(UseGpu));
         }
 
         public ObservableCollection<Detection> Detections { get; } = new();

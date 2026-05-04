@@ -15,7 +15,7 @@ namespace Vision.LiveStream.Inference.Services.Yolo
     /// 도메인(정적 이미지/RTSP) 무관. InferenceSession 의 단일 소유자.
     /// 출력 텐서: [1, 84, 8400] = (cx, cy, w, h, class0..class79) × 8400 후보.
     /// </summary>
-    public enum InferenceDevice { Cpu, Gpu }
+    public enum InferenceDevice { Cpu, DirectML, Gpu }
 
     public sealed class YoloInferenceEngine : IDisposable
     {
@@ -32,12 +32,24 @@ namespace Vision.LiveStream.Inference.Services.Yolo
             Device = device;
             var options = new SessionOptions();
 
-            if (device == InferenceDevice.Gpu)
+            if (device == InferenceDevice.DirectML)
             {
                 try
                 {
-                    // CUDA 실행 프로바이더 추가 (GPU 인덱스 0번)
-                    // CUDA 미설치 환경이면 예외 발생 → CPU로 폴백
+                    // DirectML: Windows 내장 DirectX 12 ML API 사용 (CUDA Toolkit 불필요)
+                    // DirectX 12 지원 GPU면 NVIDIA/AMD/Intel 모두 동작
+                    options.AppendExecutionProvider_DML(0);
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException($"DirectML 초기화 실패: {ex.Message}", ex);
+                }
+            }
+            else if (device == InferenceDevice.Gpu)
+            {
+                try
+                {
+                    // CUDA: CUDA Toolkit 12.x 설치 필요
                     options.AppendExecutionProvider_CUDA(0);
                 }
                 catch (Exception ex)
