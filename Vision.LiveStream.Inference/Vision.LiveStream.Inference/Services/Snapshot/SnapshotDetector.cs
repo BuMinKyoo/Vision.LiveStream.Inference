@@ -30,8 +30,8 @@ namespace Vision.LiveStream.Inference.Services.Snapshot
                 // 전처리: 파일 읽기 → letterbox 리사이즈 → 정규화 → CHW 텐서 [1,3,640,640]
                 LetterboxResult lb = YoloPreprocessor.Preprocess(imagePath);
 
-                // 추론: ONNX 세션 실행 → 후처리(NMS) → 원본 좌표계 Detection 리스트
-                return _engine.Detect(lb, cancellationToken);
+                var (detections, _, _) = _engine.Detect(lb, cancellationToken);
+                return detections;
             }, cancellationToken);
         }
     }

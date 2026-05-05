@@ -38,6 +38,9 @@ namespace Vision.LiveStream.Inference.ViewModels
         private int _imageHeight;
         private double _displayFps;
         private double _inferenceFps;
+        private double _preprocessMs;
+        private double _inferenceMs;
+        private double _postprocessMs;
 
         private RtspFrameSource? _source;
         private CancellationTokenSource? _cts;
@@ -210,6 +213,48 @@ namespace Vision.LiveStream.Inference.ViewModels
             }
         }
 
+        public double PreprocessMs
+        {
+            get => _preprocessMs;
+            private set
+            {
+                if (Math.Abs(_preprocessMs - value) < 0.05)
+                {
+                    return;
+                }
+                _preprocessMs = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public double InferenceMs
+        {
+            get => _inferenceMs;
+            private set
+            {
+                if (Math.Abs(_inferenceMs - value) < 0.05)
+                {
+                    return;
+                }
+                _inferenceMs = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public double PostprocessMs
+        {
+            get => _postprocessMs;
+            private set
+            {
+                if (Math.Abs(_postprocessMs - value) < 0.05)
+                {
+                    return;
+                }
+                _postprocessMs = value;
+                OnPropertyChanged();
+            }
+        }
+
         private void Connect()
         {
             if (IsStreaming)
@@ -280,6 +325,9 @@ namespace Vision.LiveStream.Inference.ViewModels
                 Detections.Clear();
                 DisplayFps = 0;
                 InferenceFps = 0;
+                PreprocessMs = 0;
+                InferenceMs = 0;
+                PostprocessMs = 0;
             }
             catch (Exception ex)
             {
@@ -352,16 +400,12 @@ namespace Vision.LiveStream.Inference.ViewModels
                         break;
                     }
 
-                    // DetectAsync 내부: 전처리(letterbox) → ONNX 추론 → 후처리(NMS) → Detection 리스트 반환
-                    IReadOnlyList<Detection> detections = await ActiveDetector
+                    var (detections, timings) = await ActiveDetector
                         .DetectAsync(frame.BgrPixels, frame.Width, frame.Height, ct)
-                        .ConfigureAwait(false); // UI 스레드로 복귀할 필요 없음
+                        .ConfigureAwait(false);
 
                     _inferenceFpsCounter.Tick(out double fps);
 
-                    // 추론 결과를 UI 스레드의 ObservableCollection에 반영
-                    // _ =: 반환값(DispatcherOperation)을 무시. UI 갱신 완료를 기다릴 필요 없음
-                    // DispatcherPriority.Background: 렌더링보다 낮은 우선순위 → 화면 표시가 먼저
                     _ = _dispatcher.BeginInvoke(() =>
                     {
                         Detections.Clear();
@@ -370,6 +414,9 @@ namespace Vision.LiveStream.Inference.ViewModels
                             Detections.Add(d);
                         }
                         InferenceFps = fps;
+                        PreprocessMs = timings.PreprocessMs;
+                        InferenceMs = timings.InferenceMs;
+                        PostprocessMs = timings.PostprocessMs;
                     }, DispatcherPriority.Background);
                 }
             }

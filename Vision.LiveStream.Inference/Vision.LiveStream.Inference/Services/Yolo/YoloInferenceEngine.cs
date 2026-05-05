@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using Microsoft.ML.OnnxRuntime;
@@ -66,24 +67,26 @@ namespace Vision.LiveStream.Inference.Services.Yolo
         /// 동기 추론. 호출자 쪽에서 Task.Run 등으로 스레드 분리할 것.
         /// 같은 세션을 여러 스레드에서 동시에 호출하면 안 됨 (직렬화 필요).
         /// </summary>
-        public IReadOnlyList<Detection> Detect(LetterboxResult lb, CancellationToken cancellationToken = default)
+        public (IReadOnlyList<Detection> Detections, double InferenceMs, double PostprocessMs) Detect(LetterboxResult lb, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // ONNX 세션에 입력 텐서를 이름과 함께 묶어서 전달
             var input = NamedOnnxValue.CreateFromTensor(_inputName, lb.Tensor);
+
+            var swInference = Stopwatch.StartNew();
             using IDisposableReadOnlyCollection<DisposableNamedOnnxValue> results = _session.Run(new[] { input });
+            swInference.Stop();
 
             // 출력 텐서: [1, 84, 8400] → (cx, cy, w, h, class0~class79 확률) × 8400개 후보
             Tensor<float> output = results.First().AsTensor<float>();
 
-            // 8400개 후보 중 신뢰도 0.25 이상만 Detection으로 변환
+            var swPostprocess = Stopwatch.StartNew();
             List<Detection> candidates = ParseOutput(output, lb);
-
             cancellationToken.ThrowIfCancellationRequested();
+            IReadOnlyList<Detection> detections = ApplyNms(candidates, IouThreshold);
+            swPostprocess.Stop();
 
-            // 겹치는 박스 정리: 같은 객체에 여러 박스가 쳐진 것을 1개로 줄임
-            return ApplyNms(candidates, IouThreshold);
+            return (detections, swInference.Elapsed.TotalMilliseconds, swPostprocess.Elapsed.TotalMilliseconds);
         }
 
         private static List<Detection> ParseOutput(Tensor<float> output, LetterboxResult lb)

@@ -225,7 +225,23 @@
 
                 <!-- 하단 상태바 -->
                 <Border Grid.Row="2" Grid.ColumnSpan="2" Background="#EEE" Margin="0,8,0,0" Padding="8,4">
-                    <TextBlock Text="{Binding StatusMessage}" Foreground="#333"/>
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <TextBlock Foreground="#555">
+                                <Run Text="전처리:"/>
+                                <Run Text="{Binding PreprocessMs, StringFormat={}{0:F1}ms, Mode=OneWay}" FontWeight="Bold"/>
+                            </TextBlock>
+                            <TextBlock Foreground="#555" Margin="12,0,0,0">
+                                <Run Text="추론:"/>
+                                <Run Text="{Binding InferenceMs, StringFormat={}{0:F1}ms, Mode=OneWay}" FontWeight="Bold"/>
+                            </TextBlock>
+                            <TextBlock Foreground="#555" Margin="12,0,0,0">
+                                <Run Text="후처리:"/>
+                                <Run Text="{Binding PostprocessMs, StringFormat={}{0:F1}ms, Mode=OneWay}" FontWeight="Bold"/>
+                            </TextBlock>
+                        </StackPanel>
+                        <TextBlock Text="{Binding StatusMessage}" Foreground="#333"/>
+                    </DockPanel>
                 </Border>
             </Grid>
         </TabItem>

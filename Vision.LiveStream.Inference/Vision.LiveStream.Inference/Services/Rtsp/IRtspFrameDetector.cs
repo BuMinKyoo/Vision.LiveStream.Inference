@@ -14,6 +14,6 @@ namespace Vision.LiveStream.Inference.Services.Rtsp
         /// bgrPixels: 길이 = width * height * 3, 채널 순서 B-G-R, row-major.
         /// 결과 좌표는 입력 프레임 픽셀 기준.
         /// </summary>
-        Task<IReadOnlyList<Detection>> DetectAsync(byte[] bgrPixels, int width, int height, CancellationToken cancellationToken = default);
+        Task<(IReadOnlyList<Detection> Detections, InferenceTimings Timings)> DetectAsync(byte[] bgrPixels, int width, int height, CancellationToken cancellationToken = default);
     }
 }

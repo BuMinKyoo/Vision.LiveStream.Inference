@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Vision.LiveStream.Inference.Models;
@@ -19,18 +20,26 @@ namespace Vision.LiveStream.Inference.Services.Rtsp
             _engine = engine;
         }
 
-        public Task<IReadOnlyList<Detection>> DetectAsync(byte[] bgrPixels, int width, int height, CancellationToken cancellationToken = default)
+        public Task<(IReadOnlyList<Detection> Detections, InferenceTimings Timings)> DetectAsync(byte[] bgrPixels, int width, int height, CancellationToken cancellationToken = default)
         {
-            // Task.Run: 전처리 + 추론은 CPU 집약적이므로 ThreadPool 스레드에서 실행
-            return Task.Run<IReadOnlyList<Detection>>(() =>
+            return Task.Run(() =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // 전처리: BGR byte[] → letterbox 리사이즈 → 정규화 → CHW 텐서 [1,3,640,640]
+                var swPreprocess = Stopwatch.StartNew();
                 LetterboxResult lb = YoloPreprocessor.Preprocess(bgrPixels, width, height);
+                swPreprocess.Stop();
 
-                // 추론: ONNX 세션 실행 → 후처리(NMS) → 원본 좌표계 Detection 리스트
-                return _engine.Detect(lb, cancellationToken);
+                var (detections, inferenceMs, postprocessMs) = _engine.Detect(lb, cancellationToken);
+
+                var timings = new InferenceTimings
+                {
+                    PreprocessMs = swPreprocess.Elapsed.TotalMilliseconds,
+                    InferenceMs = inferenceMs,
+                    PostprocessMs = postprocessMs,
+                };
+
+                return (detections, timings);
             }, cancellationToken);
         }
     }
