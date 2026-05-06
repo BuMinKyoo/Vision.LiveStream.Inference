@@ -213,13 +213,3 @@ RtspFrameSource.CaptureLoop                                                     
 5. 차/사람 등이 나오는 영상이면 박스가 따라오는지 확인
 
 ---
-
-## 6. 다음 작업 (Step 5 — 다중 채널)
-
-- [ ] 단일 채널 검증 후, `RtspViewModel` 을 N개 인스턴스화하는 그리드 UI (4ch/8ch)
-- [ ] `YoloInferenceEngine` 1개를 N개 채널이 공유 (직렬 추론 큐 검토)
-- [ ] dotMemory / dotTrace 로 GC 스파이크 / 메모리 폭발 지점 측정
-- [ ] 매 프레임 `byte[]` 새 할당 → 풀링 / 재사용으로 LOH 부담 줄이기
-- [ ] 끊김 자동 재연결 정책
-
----
