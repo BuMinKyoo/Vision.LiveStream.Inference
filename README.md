@@ -1,5 +1,11 @@
 # Vision.LiveStream.Inference
 
+<br/>
+
+<img width="1084" height="710" alt="image" src="https://github.com/user-attachments/assets/23d16b1b-6d5a-4bf4-b93c-fee95413ebbe" />
+
+<br/>
+
 WPF (.NET 10) + ONNX Runtime 기반 **실시간 RTSP 영상 객체 검출** 학습 프로젝트.
 선행 프로젝트 [`Vision.OnnxTester`](https://github.com/) (정적 이미지 + YOLOv8) 의 검출 엔진을 베이스로,
 RTSP 스트림을 받아 실시간으로 추론하고 화면에 박스를 그리는 것이 목표.
